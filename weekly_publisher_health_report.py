@@ -9,13 +9,16 @@ import datetime
 
 # Report configuration
 REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
+    "slack_channel_id": "C0AV8GH3EQ5",  # #supply-health-weekly
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
     # Hex projects
-    "hex_publisher_alerts_project": "019d9be4-3547-7008-9849-742c0d956afb",
-    "hex_supply_performance_project": "019ce306-f016-700c-aed9-a9ba95d827c2",
+    "hex_workspace_id": "01975719-79d0-711b-a61c-0d574da7873a",
+    "hex_publisher_alerts_app": "Publisher-Alerts-0331EBOLFT7qulVc6c8qmh",
+    "hex_publisher_alerts_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest",
+    "hex_supply_performance_app": "Supply-Performance-032glc8YVtMzC5RWVsOqqQ",
+    "hex_supply_performance_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest",
 
     # Health flag thresholds
     "thresholds": {
@@ -56,7 +59,9 @@ SEGMENTS = {
             "deduplication": "lag() over order_id ordered by event_created_at — first event per order only",
             "moroccanoil_cpm": "impressions × $0.10 from widget_viewable_threshold_brand_display events",
             "action_groups": {
-                "BOOKING GROUP": ["booking"],
+                # Pre-purchase confirmation pages — combine both booking intents
+                "BOOKING GROUP": ["booking", "upcoming_booking"],
+                # Completed transactions — combine all purchase variants
                 "PURCHASE GROUP": ["purchase", "purchase_and_booking", "booking_and_purchase"],
             },
             "transaction_type_field": "CUSTOM_METADATA:transactionType",
@@ -79,11 +84,15 @@ RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 
 # Advertiser attribution
 ATTRIBUTION = {
-    "source": "FCT_BRAND_SESSIONS (no join to FCT_SESSIONS needed)",
+    # Join FCT_BRAND_SESSIONS to FCT_SESSIONS on session_id for publisher_name + page_type
+    "source": "FCT_SESSIONS JOIN FCT_BRAND_SESSIONS ON session_id",
+    # brand_display_context (Hero vs. Multiple) is part of the grain — omitting it double-counts spend
     "group_by": ["publisher_name", "page_type", "brand_name", "is_nea", "brand_display_context"],
     "order_by": "abs(spend_delta) DESC",
     "limit_per_group": 5,
     "cross_publisher_signal_threshold": 3,  # Flag if top driver across >= 3 publishers
+    # CPA conversion counts unreliable since Dec 2025 — use billable_amount for all attribution
+    "spend_metric": "billable_amount",
 }
 
 
