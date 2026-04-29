@@ -1,7 +1,7 @@
 # Weekly Publisher Health Report — Claude Code Routine
 
 **Routine name:** Weekly Publisher Health Report
-**Schedule:** Every Monday at 8:00 AM (your local timezone)
+**Schedule:** Every weekday (Mon–Fri) at 8:00 AM (your local timezone)
 **Connectors required:** Hex, Slack, Gmail
 **Slack channel:** #supply-health-weekly (ID: C0AV8GH3EQ5)
 **Email recipient:** mlevy@disconetwork.com
@@ -11,7 +11,7 @@
 ## Setup Instructions
 
 1. Go to **[claude.ai/code](https://claude.ai/code)** → click **Routines** → **New Routine**
-2. Set schedule: **Weekly → Monday → 8:00 AM**
+2. Set schedule: **Daily → Mon, Tue, Wed, Thu, Fri → 8:00 AM**
 3. Enable connectors: **Hex** + **Slack** + **Gmail**
 4. Paste everything inside the code block below into the Routine prompt field and save
 
@@ -19,7 +19,7 @@
 
 ## Routine Prompt
 
-Every Monday morning, run the Weekly Publisher Health Report.
+Every weekday morning (Mon–Fri), run the Weekly Publisher Health Report.
 Pull from three data sources, then deliver the report to BOTH Slack and email.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
