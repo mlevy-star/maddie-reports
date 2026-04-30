@@ -9,7 +9,7 @@ import datetime
 
 # Report configuration
 REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
+    "slack_channel_id": "C0AV8GH3EQ5",  # #supply-health-weekly
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
@@ -56,7 +56,7 @@ SEGMENTS = {
             "deduplication": "lag() over order_id ordered by event_created_at — first event per order only",
             "moroccanoil_cpm": "impressions × $0.10 from widget_viewable_threshold_brand_display events",
             "action_groups": {
-                "BOOKING GROUP": ["booking"],
+                "BOOKING GROUP": ["booking", "upcoming_booking"],
                 "PURCHASE GROUP": ["purchase", "purchase_and_booking", "booking_and_purchase"],
             },
             "transaction_type_field": "CUSTOM_METADATA:transactionType",
