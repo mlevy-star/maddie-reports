@@ -1,7 +1,7 @@
-# Weekly Publisher Health Report — Monday 8:00 AM ET
+# Weekly Publisher Health Report — Mon–Fri 9:00 AM
 # Run via Claude Code CLI (requires Hex, Slack, Gmail MCPs configured)
 #
 # To install: crontab -e, then paste the line below
 # (adjust path to match your Claude Code installation)
 
-0 8 * * 1 cd /home/user/maddie-reports && claude -p "Run the weekly publisher health report for the week ending this past Sunday. Use the config in weekly_publisher_health_report.py. Pull data from Hex (Publisher Alerts + Supply Performance), apply health flags, send to Slack channel C0AV8GH3EQ5 and email mlevy@disconetwork.com." --allowedTools "mcp__Hex__*,mcp__Slack__*,mcp__Gmail__*,Bash"
+0 9 * * 1-5 cd /home/user/maddie-reports && claude -p "Run the weekly publisher health report. Use the config in weekly_publisher_health_report.py. Compare the last 7 days (today minus 7 through yesterday) vs the 7 days prior to that — rolling windows, not calendar weeks. Pull RPM from Hex Publisher Alerts and RPL by page type from Hex Supply Performance. Apply health flags, run advertiser attribution for any publisher/page type that moved >10% WoW, then send the full report to Slack channel C0AV8GH3EQ5 and email mlevy@disconetwork.com." --allowedTools "mcp__Hex__*,mcp__Slack__*,mcp__Gmail__*,Bash"
