@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Weekly Publisher Health Report Runner
+Daily Publisher Health Report Runner
 Sends to: Slack #supply-health-weekly (C0AV8GH3EQ5) + email mlevy@disconetwork.com
-Schedule: Weekdays Mon–Fri at 9:00 AM (see cron.txt)
+Schedule: Daily at 9:00 AM (see cron.txt)
+
+Report metric: RPL (Revenue Per Load) only.
+Source: Supply Performance dashboard — FCT_SESSIONS + FCT_BRAND_SESSIONS (+ Mindbody custom pipeline).
+The Publisher Alerts / RPM section is intentionally excluded.
 """
 
 import datetime
@@ -13,15 +17,14 @@ REPORT_CONFIG = {
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
-    # Hex projects (workspace: 01975719-79d0-711b-a61c-0d574da7873a)
-    "hex_publisher_alerts_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest",
+    # Hex project (workspace: 01975719-79d0-711b-a61c-0d574da7873a)
     "hex_supply_performance_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest",
 
-    # Health flag thresholds
+    # Health flag thresholds (applied to RPL WoW Δ)
     "thresholds": {
-        "critical": -0.20,    # RPM/RPL drop > 20%
-        "at_risk": -0.10,     # RPM/RPL drop 10–20%
-        "increase": 0.10,     # RPM/RPL gain > 10%
+        "critical": -0.20,    # RPL drop > 20%
+        "at_risk": -0.10,     # RPL drop 10–20%
+        "increase": 0.10,     # RPL gain > 10%
         # else: HEALTHY (±10%)
     },
 
@@ -70,10 +73,6 @@ SEGMENTS = {
         },
     },
 }
-
-# RPM formula (Publisher Alerts)
-RPM_FORMULA = "sum(billable_amount) * 1000 / nullif(sum(brand_displays), 0)"
-RPM_MIN_DISPLAYS = 100  # Minimum brand displays per week to include publisher
 
 # RPL formula (Supply Performance)
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
