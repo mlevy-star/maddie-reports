@@ -10,7 +10,8 @@ Report sections (in order):
   3. RPL by page type — Gopuff / BevMo
   4. RPL by action type — Mindbody
   5. OTP DFL WoW — All Publishers
-  6. BOTTOM LINE
+  6. NEA Advertiser WoW — Notable Movers
+  7. BOTTOM LINE
 
 Formatting requirements:
   - After each RPL/DFL table, include 1–2 italic sentences naming the top advertiser drivers
@@ -117,6 +118,31 @@ ATTRIBUTION = {
     "order_by": "abs(spend_delta) DESC",
     "limit_per_group": 5,
     "cross_publisher_signal_threshold": 3,  # Flag if top driver across >= 3 publishers
+}
+
+# NEA advertiser section
+# Source: FCT_SESSIONS + FCT_BRAND_SESSIONS, is_nea = TRUE, excl. Mindbody
+# Show brands where |spend_delta| > $500 OR |spend_delta_pct| > 15%
+# For each brand, include publisher_count in current window; flag cross-publisher signal if >= 3
+# Sort declines by spend_delta ASC (biggest $ drop first); show gainers separately
+# Report both the decline list and the gain list — gainers matter for context (e.g. Super.com offsetting Rakuten)
+NEA_SECTION = {
+    "source": "FCT_SESSIONS + FCT_BRAND_SESSIONS",
+    "filter": "is_nea = TRUE",
+    "exclude_publishers": ["Mindbody"],
+    "thresholds": {
+        "min_spend_delta_abs": 500,     # surface if |spend_delta| > $500
+        "min_spend_delta_pct": 0.15,    # OR |spend_delta_pct| > 15%
+    },
+    "cross_publisher_signal_threshold": 3,
+    "sort_declines": "spend_delta ASC",
+    "sort_gains": "spend_delta DESC",
+    "note": (
+        "Distinguish rate cuts (still on many publishers, spend per pub down) "
+        "from clean exits (publisher_count drops to 0). "
+        "Flag Rakuten and FreeShipping.com separately — they're always large and "
+        "their moves set the NEA baseline."
+    ),
 }
 
 
