@@ -10,6 +10,16 @@ Report sections (in order):
   3. RPL by page type — Gopuff / BevMo
   4. RPL by action type — Mindbody
   5. OTP DFL WoW — All Publishers
+  6. BOTTOM LINE
+
+Formatting requirements:
+  - After each RPL/DFL table, include 1–2 italic sentences naming the top advertiser drivers
+    and their dollar contribution (e.g. "Booking group: mostly endemic — Cuts Clothing (−$5.2K)
+    + Kenny Flowers (−$2.6K) = ~54% of the decline.")
+  - End every report with a BOTTOM LINE block containing:
+      • A plain-English root-cause summary (what is actually happening, not a list of symptoms)
+      • 2–3 recommended actions with emoji indicators (🔍 investigate, 📋 follow-up, 📈 monitor)
+      • Links to the Hex threads used to pull the data
 
 The Publisher Alerts / RPM section and the full account breakdown are intentionally excluded.
 """
