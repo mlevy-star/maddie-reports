@@ -77,6 +77,19 @@ SEGMENTS = {
 # RPL formula (Supply Performance)
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 
+# DFL section — OTP only, all publishers (excl. Mindbody which uses a different event schema)
+# Source: FCT_SESSIONS only (do NOT join FCT_BRAND_SESSIONS — fans out row counts)
+# Metric: sum(sessions_with_widget_display) per publisher per window
+# Compare current 7-day window vs prior 7-day window; report % change WoW
+# Sort by abs(dfl_delta) descending; flag with same thresholds as RPL
+DFL_SECTION = {
+    "page_type": "ORDER_TRACKING",   # OTP only
+    "source": "FCT_SESSIONS",
+    "metric": "sum(sessions_with_widget_display)",
+    "segments": "all publishers with OTP traffic (excl. Mindbody)",
+    "sort": "abs(dfl_delta) DESC",
+}
+
 # Advertiser attribution
 # Always GROUP BY brand_display_context (Hero vs. Multiple) to avoid double-counting spend.
 # Compute session counts from FCT_SESSIONS alone — joining FCT_BRAND_SESSIONS fans out rows.
