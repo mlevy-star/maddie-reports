@@ -2,20 +2,20 @@
 """
 Weekly Publisher Health Report Runner
 Sends to: Slack #supply-health-weekly (C0AV8GH3EQ5) + email mlevy@disconetwork.com
-Schedule: Every Monday morning (see cron.txt)
+Schedule: Weekdays Mon–Fri at 9:00 AM (see cron.txt)
 """
 
 import datetime
 
 # Report configuration
 REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
+    "slack_channel_id": "C0AV8GH3EQ5",  # #supply-health-weekly
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
-    # Hex projects
-    "hex_publisher_alerts_project": "019d9be4-3547-7008-9849-742c0d956afb",
-    "hex_supply_performance_project": "019ce306-f016-700c-aed9-a9ba95d827c2",
+    # Hex projects (workspace: 01975719-79d0-711b-a61c-0d574da7873a)
+    "hex_publisher_alerts_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest",
+    "hex_supply_performance_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest",
 
     # Health flag thresholds
     "thresholds": {
@@ -25,13 +25,12 @@ REPORT_CONFIG = {
         # else: HEALTHY (±10%)
     },
 
-    # Page type mappings (raw DB value -> display label)
+    # Page type mappings (raw DB value -> display label); MODAL excluded
     "page_types": {
         "THANK_YOU": "TYP",
         "ORDER_STATUS": "OSP",
         "ORDER_TRACKING": "OTP",
         "SUPPORT_CENTER": "Support",
-        # MODAL excluded
     },
 }
 
@@ -56,8 +55,10 @@ SEGMENTS = {
             "deduplication": "lag() over order_id ordered by event_created_at — first event per order only",
             "moroccanoil_cpm": "impressions × $0.10 from widget_viewable_threshold_brand_display events",
             "action_groups": {
-                "BOOKING GROUP": ["booking"],
-                "PURCHASE GROUP": ["purchase", "purchase_and_booking", "booking_and_purchase"],
+                # Pre-purchase confirmation pages
+                "BOOKING GROUP": ["booking", "upcoming_booking"],
+                # Completed transactions
+                "PURCHASE GROUP": ["purchase", "booking_and_purchase"],
             },
             "transaction_type_field": "CUSTOM_METADATA:transactionType",
             "session_events": "widget_load (deduplicated by order_id)",
@@ -78,8 +79,11 @@ RPM_MIN_DISPLAYS = 100  # Minimum brand displays per week to include publisher
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 
 # Advertiser attribution
+# Always GROUP BY brand_display_context (Hero vs. Multiple) to avoid double-counting spend.
+# Compute session counts from FCT_SESSIONS alone — joining FCT_BRAND_SESSIONS fans out rows.
+# CPA conversion counts unreliable since Dec 2025; use billable_amount for all attribution.
 ATTRIBUTION = {
-    "source": "FCT_BRAND_SESSIONS (no join to FCT_SESSIONS needed)",
+    "join": "FCT_SESSIONS s JOIN FCT_BRAND_SESSIONS bs ON s.session_id = bs.session_id",
     "group_by": ["publisher_name", "page_type", "brand_name", "is_nea", "brand_display_context"],
     "order_by": "abs(spend_delta) DESC",
     "limit_per_group": 5,
@@ -88,15 +92,17 @@ ATTRIBUTION = {
 
 
 def get_report_window(as_of: datetime.date = None):
-    """Return (current_start, current_end, prior_start, prior_end) for Mon–Sun weeks."""
+    """Return (current_start, current_end, prior_start, prior_end) as rolling 7-day windows.
+
+    current  = [as_of - 7, as_of - 1]  (last 7 days through yesterday)
+    prior    = [as_of - 14, as_of - 8] (7 days before that)
+    """
     if as_of is None:
         as_of = datetime.date.today()
-    # Find most recent Sunday (end of current week)
-    days_since_sunday = (as_of.weekday() + 1) % 7
-    current_end = as_of - datetime.timedelta(days=days_since_sunday)
-    current_start = current_end - datetime.timedelta(days=6)
-    prior_end = current_start - datetime.timedelta(days=1)
-    prior_start = prior_end - datetime.timedelta(days=6)
+    current_end = as_of - datetime.timedelta(days=1)
+    current_start = as_of - datetime.timedelta(days=7)
+    prior_end = as_of - datetime.timedelta(days=8)
+    prior_start = as_of - datetime.timedelta(days=14)
     return current_start, current_end, prior_start, prior_end
 
 
