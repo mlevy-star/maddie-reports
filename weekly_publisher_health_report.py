@@ -85,9 +85,11 @@ RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 DFL_SECTION = {
     "page_type": "ORDER_TRACKING",   # OTP only
     "source": "FCT_SESSIONS",
+    "hex_narvar_report_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/EXT-Narvar-Reporting-031SR1hJTJuTVbRq5TSxa8/latest",
     "metric": "sum(sessions_with_widget_display)",
     "segments": "all publishers with OTP traffic (excl. Mindbody)",
     "sort": "abs(dfl_delta) DESC",
+    "note": "Narvar report is the preferred source for OTP DFL data; fall back to FCT_SESSIONS if unavailable",
 }
 
 # Advertiser attribution
