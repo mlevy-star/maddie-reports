@@ -4,9 +4,14 @@ Daily Publisher Health Report Runner
 Sends to: Slack #supply-health-weekly (C0AV8GH3EQ5) + email mlevy@disconetwork.com
 Schedule: Daily at 9:00 AM (see cron.txt)
 
-Report metric: RPL (Revenue Per Load) only.
-Source: Supply Performance dashboard — FCT_SESSIONS + FCT_BRAND_SESSIONS (+ Mindbody custom pipeline).
-The Publisher Alerts / RPM section is intentionally excluded.
+Report sections (in order):
+  1. Network-wide signals
+  2. RPL by page type — All Pubs (excl. MB/GP/BevMo)
+  3. RPL by page type — Gopuff / BevMo
+  4. RPL by action type — Mindbody
+  5. OTP DFL WoW — All Publishers
+
+The Publisher Alerts / RPM section and the full account breakdown are intentionally excluded.
 """
 
 import datetime
