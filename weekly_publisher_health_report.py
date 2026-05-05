@@ -72,7 +72,11 @@ SEGMENTS = {
 
 # RPM formula (Publisher Alerts)
 RPM_FORMULA = "sum(billable_amount) * 1000 / nullif(sum(brand_displays), 0)"
-RPM_MIN_DISPLAYS = 100  # Minimum brand displays per week to include publisher
+RPM_MIN_DISPLAYS = 100        # Minimum brand displays to appear in full account breakdown
+RPM_FLAG_MIN_DISPLAYS = 5000  # Minimum brand displays to be flagged in the RPM Summary section
+                              # Only publishers above this threshold are surfaced as
+                              # CRITICAL / AT_RISK / INCREASE — filters out low-volume accounts
+                              # whose RPM swings are noise, not signal.
 
 # RPL formula (Supply Performance)
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
