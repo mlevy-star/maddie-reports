@@ -9,13 +9,13 @@ import datetime
 
 # Report configuration
 REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
+    "slack_channel_id": "C0AV8GH3EQ5",  # #supply-health-weekly
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
-    # Hex projects
-    "hex_publisher_alerts_project": "019d9be4-3547-7008-9849-742c0d956afb",
-    "hex_supply_performance_project": "019ce306-f016-700c-aed9-a9ba95d827c2",
+    # Hex dashboards
+    "hex_publisher_alerts_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest",
+    "hex_supply_performance_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest",
 
     # Health flag thresholds
     "thresholds": {
@@ -79,7 +79,7 @@ RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 
 # Advertiser attribution
 ATTRIBUTION = {
-    "source": "FCT_BRAND_SESSIONS (no join to FCT_SESSIONS needed)",
+    "source": "FCT_BRAND_SESSIONS joined to FCT_SESSIONS on session_id",
     "group_by": ["publisher_name", "page_type", "brand_name", "is_nea", "brand_display_context"],
     "order_by": "abs(spend_delta) DESC",
     "limit_per_group": 5,
@@ -88,15 +88,18 @@ ATTRIBUTION = {
 
 
 def get_report_window(as_of: datetime.date = None):
-    """Return (current_start, current_end, prior_start, prior_end) for Mon–Sun weeks."""
+    """Return (current_start, current_end, prior_start, prior_end) as rolling 7-day windows.
+
+    current = today-7 through yesterday
+    prior   = today-14 through today-8
+    Runs correctly regardless of what day of the week the report executes.
+    """
     if as_of is None:
         as_of = datetime.date.today()
-    # Find most recent Sunday (end of current week)
-    days_since_sunday = (as_of.weekday() + 1) % 7
-    current_end = as_of - datetime.timedelta(days=days_since_sunday)
-    current_start = current_end - datetime.timedelta(days=6)
-    prior_end = current_start - datetime.timedelta(days=1)
-    prior_start = prior_end - datetime.timedelta(days=6)
+    current_end = as_of - datetime.timedelta(days=1)
+    current_start = as_of - datetime.timedelta(days=7)
+    prior_end = as_of - datetime.timedelta(days=8)
+    prior_start = as_of - datetime.timedelta(days=14)
     return current_start, current_end, prior_start, prior_end
 
 
