@@ -79,6 +79,7 @@ ATTRIBUTION = {
     "order_by": "abs(spend_delta) DESC",
     "limit_per_group": 5,
     "cross_publisher_signal_threshold": 3,  # Flag if top driver across >= 3 publishers
+    "cross_publisher_include_spend_delta": True,  # Always show total WoW spend delta ($) per advertiser
 }
 
 
