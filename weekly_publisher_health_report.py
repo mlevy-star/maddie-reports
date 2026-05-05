@@ -14,7 +14,6 @@ REPORT_CONFIG = {
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
     # Hex dashboards
-    "hex_publisher_alerts_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest",
     "hex_supply_performance_url": "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest",
 
     # Health flag thresholds
@@ -69,14 +68,6 @@ SEGMENTS = {
         },
     },
 }
-
-# RPM formula (Publisher Alerts)
-RPM_FORMULA = "sum(billable_amount) * 1000 / nullif(sum(brand_displays), 0)"
-RPM_MIN_DISPLAYS = 100        # Minimum brand displays to appear in full account breakdown
-RPM_FLAG_MIN_DISPLAYS = 5000  # Minimum brand displays to be flagged in the RPM Summary section
-                              # Only publishers above this threshold are surfaced as
-                              # CRITICAL / AT_RISK / INCREASE — filters out low-volume accounts
-                              # whose RPM swings are noise, not signal.
 
 # RPL formula (Supply Performance)
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
