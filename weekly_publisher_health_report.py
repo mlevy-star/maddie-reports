@@ -9,7 +9,7 @@ import datetime
 
 # Report configuration
 REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
+    "slack_channel_id": "C0AV8GH3EQ5",  # #supply-health-weekly
     "email_to": "mlevy@disconetwork.com",
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
@@ -88,15 +88,18 @@ ATTRIBUTION = {
 
 
 def get_report_window(as_of: datetime.date = None):
-    """Return (current_start, current_end, prior_start, prior_end) for Mon–Sun weeks."""
+    """Return (current_start, current_end, prior_start, prior_end) as rolling 7-day windows.
+
+    current  = [today-7 .. yesterday]
+    prior    = [today-14 .. today-8]
+    Windows are day-of-week-agnostic per spec.
+    """
     if as_of is None:
         as_of = datetime.date.today()
-    # Find most recent Sunday (end of current week)
-    days_since_sunday = (as_of.weekday() + 1) % 7
-    current_end = as_of - datetime.timedelta(days=days_since_sunday)
-    current_start = current_end - datetime.timedelta(days=6)
-    prior_end = current_start - datetime.timedelta(days=1)
-    prior_start = prior_end - datetime.timedelta(days=6)
+    current_end = as_of - datetime.timedelta(days=1)
+    current_start = as_of - datetime.timedelta(days=7)
+    prior_end = as_of - datetime.timedelta(days=8)
+    prior_start = as_of - datetime.timedelta(days=14)
     return current_start, current_end, prior_start, prior_end
 
 
