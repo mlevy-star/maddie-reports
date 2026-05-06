@@ -2,7 +2,7 @@
 """
 Weekly Publisher Health Report Runner
 Sends to: Slack #supply-health-weekly (C0AV8GH3EQ5) + email mlevy@disconetwork.com
-Schedule: Every Monday morning (see cron.txt)
+Schedule: Daily at 9 AM (see cron.txt)
 """
 
 import datetime
@@ -14,16 +14,7 @@ REPORT_CONFIG = {
     "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
 
     # Hex projects
-    "hex_publisher_alerts_project": "019d9be4-3547-7008-9849-742c0d956afb",
     "hex_supply_performance_project": "019ce306-f016-700c-aed9-a9ba95d827c2",
-
-    # Health flag thresholds
-    "thresholds": {
-        "critical": -0.20,    # RPM/RPL drop > 20%
-        "at_risk": -0.10,     # RPM/RPL drop 10–20%
-        "increase": 0.10,     # RPM/RPL gain > 10%
-        # else: HEALTHY (±10%)
-    },
 
     # Page type mappings (raw DB value -> display label)
     "page_types": {
@@ -34,6 +25,15 @@ REPORT_CONFIG = {
         # MODAL excluded
     },
 }
+
+# Report section order (RPM removed)
+REPORT_SECTIONS = [
+    "tldr",
+    "rpl_all_pubs",
+    "rpl_gopuff_bevmo",
+    "rpl_mindbody",
+    "network_advertiser_signals",
+]
 
 # Publisher segments
 SEGMENTS = {
@@ -70,20 +70,16 @@ SEGMENTS = {
     },
 }
 
-# RPM formula (Publisher Alerts)
-RPM_FORMULA = "sum(billable_amount) * 1000 / nullif(sum(brand_displays), 0)"
-RPM_MIN_DISPLAYS = 100  # Minimum brand displays per week to include publisher
-
 # RPL formula (Supply Performance)
 RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
 
-# Advertiser attribution
+# Network-level advertiser attribution
+# Aggregated across all publishers — shows which advertisers drove network-wide spend shifts
 ATTRIBUTION = {
-    "source": "FCT_BRAND_SESSIONS (no join to FCT_SESSIONS needed)",
-    "group_by": ["publisher_name", "page_type", "brand_name", "is_nea", "brand_display_context"],
-    "order_by": "abs(spend_delta) DESC",
-    "limit_per_group": 5,
-    "cross_publisher_signal_threshold": 3,  # Flag if top driver across >= 3 publishers
+    "source": "FCT_BRAND_SESSIONS",
+    "group_by": ["brand_name", "is_nea", "brand_display_context"],
+    "cross_publisher_signal_threshold": 3,  # Include if spend moved at >= 3 publishers
+    "include_totals": True,                 # Show total spend down / up / net
 }
 
 
