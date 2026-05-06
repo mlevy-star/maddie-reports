@@ -1,47 +1,78 @@
-# Narvar OTP Daily Routine — Claude Code Script
+#!/usr/bin/env python3
+"""
+Narvar OTP Daily Routine
+------------------------
+Run each morning at 9:00 AM ET. Queries Snowflake for rolling 7-day
+DFLs, RPL, and top advertisers per publisher, detects flags, and posts
+a formatted summary to #test-narvar-claude (C0B286G3SPK).
 
-Run this each morning at 9:00 AM ET. It queries Snowflake for rolling 7-day
-DFLs, RPL, and top advertisers per publisher, detects flags, and posts a
-formatted summary to `#test-narvar-claude`.
+Cron setup (run M-F at 9 AM ET):
+    0 9 * * 1-5 TZ="America/New_York" /usr/bin/python3 /path/to/narvar_daily.py >> /tmp/narvar_daily.log 2>&1
 
----
+Required env vars (add to ~/.zshrc or a .env file):
+    SNOWFLAKE_ACCOUNT
+    SNOWFLAKE_USER
+    SNOWFLAKE_PASSWORD
+    SNOWFLAKE_WAREHOUSE
+    SNOWFLAKE_DATABASE     (default: DISCO_CORE)
+    SNOWFLAKE_ROLE
+    SLACK_BOT_TOKEN        (xoxb-...)
+"""
 
-## Setup
+import os
+import sys
+import logging
+from datetime import date, timedelta
+from collections import defaultdict
 
-1. Install Claude Code if you haven't: `npm install -g @anthropic-ai/claude-code`
-2. Make sure your Slack MCP is connected in Claude Code (it uses your existing
-   claude.ai Slack connection).
-3. Save the prompt below to a file, e.g. `narvar_daily.md`, then run:
+import snowflake.connector
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
-```bash
-claude --print narvar_daily.md
-```
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
-To schedule it at 9:00 AM ET every weekday, add a cron job:
+# ── Config ───────────────────────────────────────────────────────────────────
+SLACK_CHANNEL = "C0B286G3SPK"   # #test-narvar-claude
+HEX_LINK = "https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/EXT-Narvar-Reporting-031SR1hJTJuTVbRq5TSxa8/latest"
 
-```bash
-# Open crontab
-crontab -e
+DFL_FLAG_THRESHOLD = -10.0   # % WoW decline
+RPL_FLAG_THRESHOLD = -15.0   # % WoW decline
+MIN_PRIOR_DFLS     = 1_000   # minimum prior-week DFLs to be included
 
-# Add this line (runs M-F at 9:00 AM ET, adjust TZ as needed)
-0 9 * * 1-5 TZ="America/New_York" claude --print /path/to/narvar_daily.md >> /tmp/narvar_daily.log 2>&1
-```
+# ── Date helpers ──────────────────────────────────────────────────────────────
+def get_date_ranges():
+    today      = date.today()
+    yesterday  = today - timedelta(days=1)
+    curr_end   = yesterday
+    curr_start = yesterday - timedelta(days=6)
+    prior_end  = yesterday - timedelta(days=7)
+    prior_start = yesterday - timedelta(days=13)
+    return {
+        "today":       today.strftime("%B %d, %Y"),
+        "curr_start":  curr_start.strftime("%b %d"),
+        "curr_end":    curr_end.strftime("%b %d"),
+        "prior_start": prior_start.strftime("%b %d"),
+        "prior_end":   prior_end.strftime("%b %d"),
+    }
 
----
+# ── Snowflake ─────────────────────────────────────────────────────────────────
+def get_snowflake_conn():
+    return snowflake.connector.connect(
+        account=os.environ["SNOWFLAKE_ACCOUNT"],
+        user=os.environ["SNOWFLAKE_USER"],
+        password=os.environ["SNOWFLAKE_PASSWORD"],
+        warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", ""),
+        database=os.environ.get("SNOWFLAKE_DATABASE", "DISCO_CORE"),
+        role=os.environ.get("SNOWFLAKE_ROLE", ""),
+    )
 
-## The Prompt File (`narvar_daily.md`)
-
-Paste everything below this line into your `narvar_daily.md` file:
-
----
-
-You are running the Narvar Order Tracking Page (OTP) daily publisher health
-check. Today's date is {{TODAY}}. Complete all steps silently — do not ask
-clarifying questions. Post results to Slack when done.
-
-### Step 1 — Pull DFL data from Snowflake
-
-```sql
+DFL_SQL = """
 WITH daily AS (
     SELECT
         p.publisher_name,
@@ -75,13 +106,11 @@ SELECT
     ROUND((c.dfls_curr - p.dfls_prior) / NULLIF(p.dfls_prior, 0) * 100, 1) AS pct_change
 FROM current_week c
 JOIN prior_week p ON c.publisher_name = p.publisher_name
-WHERE p.dfls_prior >= 1000
-ORDER BY pct_change ASC;
-```
+WHERE p.dfls_prior >= {min_dfls}
+ORDER BY pct_change ASC
+""".format(min_dfls=MIN_PRIOR_DFLS)
 
-### Step 2 — Pull RPL data from Snowflake
-
-```sql
+RPL_SQL = """
 WITH sessions AS (
     SELECT
         p.publisher_name,
@@ -124,14 +153,12 @@ SELECT
     1) AS rpl_pct_change
 FROM current_week c
 JOIN prior_week p ON c.publisher_name = p.publisher_name
-ORDER BY rpl_pct_change ASC;
-```
+ORDER BY rpl_pct_change ASC
+"""
 
-### Step 3 — Pull top 5 advertisers for all flagged publishers (both weeks)
-
-A publisher is flagged if: DFL WoW decline > 10% OR RPL WoW decline > 15%.
-
-```sql
+def advertisers_sql(flagged_publishers: list[str]) -> str:
+    quoted = ", ".join(f"'{p}'" for p in flagged_publishers)
+    return f"""
 WITH ranked AS (
     SELECT
         p.publisher_name,
@@ -157,125 +184,287 @@ WITH ranked AS (
     JOIN DISCO_CORE.MARTS.DIM_BRANDS b ON bs.brand_id = b.brand_id
     WHERE s.page_type = 'ORDER_TRACKING'
       AND s.dt BETWEEN DATEADD('day', -13, CURRENT_DATE - 1) AND CURRENT_DATE - 1
-      AND p.publisher_name IN (/* FLAGGED_PUBLISHERS */)
+      AND p.publisher_name IN ({quoted})
     GROUP BY 1, 2, 3
 )
 SELECT publisher_name, wk, brand_name, ROUND(revenue, 2) AS revenue, rnk
 FROM ranked
 WHERE rnk <= 5
-ORDER BY publisher_name, wk DESC, rnk;
-```
+ORDER BY publisher_name, wk DESC, rnk
+"""
 
-Replace `/* FLAGGED_PUBLISHERS */` with a quoted, comma-separated list of
-flagged publisher names from Steps 1–2.
+def run_query(conn, sql: str) -> list[dict]:
+    cur = conn.cursor()
+    cur.execute(sql.strip())
+    cols = [d[0].lower() for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
 
-### Step 4 — Apply flagging logic
+# ── Flagging logic ────────────────────────────────────────────────────────────
+def classify(dfl_pct, rpl_pct) -> str:
+    dfl_flag = dfl_pct is not None and dfl_pct < DFL_FLAG_THRESHOLD
+    rpl_flag = rpl_pct is not None and rpl_pct < RPL_FLAG_THRESHOLD
+    if dfl_flag and rpl_flag:
+        return "double"
+    if dfl_flag:
+        return "dfl"
+    if rpl_flag:
+        return "rpl"
+    return "ok"
 
-**DFL flag** 🔴 — WoW decline > 10%
-**RPL flag** ⚠️ — WoW decline > 15%
-**Double flag** 🚨 — both DFL and RPL triggered for the same publisher (highest priority, escalate same day)
-**All green** ✅ — no flags triggered
+def sort_key(flag: str) -> int:
+    return {"double": 0, "dfl": 1, "rpl": 2, "ok": 3}[flag]
 
-### Step 5 — Identify cross-publisher advertiser patterns for Network TLDR
+FLAG_EMOJI = {"double": "🚨", "dfl": "🔴", "rpl": "⚠️", "ok": "✅"}
 
-Scan the top-5 advertiser data across all flagged publishers and identify:
-1. Any advertiser appearing as a NEW entry across 2+ publishers — flag as possible network-level demand shift
-2. Any advertiser whose revenue declined across 3+ publishers — flag as possible budget/bid change
-Include these as bullet points in the Network TLDR section. Omit the section entirely if no cross-publisher patterns exist.
+# ── Cross-publisher advertiser pattern detection ───────────────────────────────
+def detect_cross_publisher_patterns(adv_data: list[dict], flagged_pubs: set[str]) -> list[str]:
+    """
+    Returns bullet-point strings for the Network TLDR section.
+    - New entries appearing across 2+ flagged publishers → demand shift signal
+    - Revenue declines across 3+ flagged publishers → budget/bid change signal
+    """
+    # Build per-publisher brand sets
+    prior_brands: dict[str, set] = defaultdict(set)
+    curr_brands:  dict[str, set] = defaultdict(set)
+    brand_rev:    dict[str, dict] = defaultdict(lambda: {"prior": 0.0, "curr": 0.0})
 
-### Step 6 — Post to Slack
+    for row in adv_data:
+        pub   = row["publisher_name"]
+        brand = row["brand_name"]
+        wk    = row["wk"]
+        rev   = float(row["revenue"] or 0)
+        if wk == "prior":
+            prior_brands[pub].add(brand)
+            brand_rev[brand]["prior"] += rev
+        else:
+            curr_brands[pub].add(brand)
+            brand_rev[brand]["curr"] += rev
 
-Post TWO messages to channel ID `C0B286G3SPK` (`#test-narvar-claude`).
+    # New entrants: in curr but NOT in prior for a given publisher
+    new_entry_count: dict[str, int] = defaultdict(int)
+    for pub in flagged_pubs:
+        new_entries = curr_brands.get(pub, set()) - prior_brands.get(pub, set())
+        for brand in new_entries:
+            new_entry_count[brand] += 1
 
----
+    # Revenue decliners across publishers
+    decline_count: dict[str, int] = defaultdict(int)
+    for pub in flagged_pubs:
+        for brand in curr_brands.get(pub, set()) & prior_brands.get(pub, set()):
+            curr_rev  = brand_rev[brand]["curr"]
+            prior_rev = brand_rev[brand]["prior"]
+            if prior_rev > 0 and (curr_rev - prior_rev) / prior_rev < -0.10:
+                decline_count[brand] += 1
 
-**Message 1 — Main brief** (post to channel):
+    bullets = []
+    for brand, count in sorted(new_entry_count.items(), key=lambda x: -x[1]):
+        if count >= 2:
+            bullets.append(
+                f"• *{brand}* entered top 5 on {count} publishers — possible low-CPM backfill signal. Flag to demand team."
+            )
+    for brand, count in sorted(decline_count.items(), key=lambda x: -x[1]):
+        if count >= 3:
+            bullets.append(
+                f"• *{brand}* revenue down across {count} publishers — possible budget or bid change."
+            )
+    return bullets
 
-```
-*📊 Narvar OTP Daily Brief — {TODAY'S DATE}*
-*Rolling 7d: {CURR_START}–{CURR_END} vs {PRIOR_START}–{PRIOR_END}*
+# ── Slack message builders ────────────────────────────────────────────────────
+def format_pct(v) -> str:
+    if v is None:
+        return "N/A"
+    sign = "+" if v > 0 else ""
+    return f"{sign}{v:.1f}%"
 
-*📌 Network TLDR*
-• *{ADVERTISER}* {cross-publisher pattern, e.g. "entered top 5 on X publishers — low-CPM backfill signal. Flag to demand team."}
-• *{ADVERTISER}* {cross-publisher pattern, e.g. "revenue down across X publishers — possible budget or bid change"}
-[Omit this section entirely if no cross-publisher patterns]
+def build_publisher_table(merged: list[dict]) -> str:
+    header = "Publisher | DFLs | DFL WoW | RPL | RPL WoW"
+    rows = [header]
+    for pub in merged:
+        emoji = FLAG_EMOJI[pub["flag"]]
+        rpl_curr = pub.get("rpl_curr")
+        rpl_str  = f"${rpl_curr:.4f}" if rpl_curr is not None else "N/A"
+        rows.append(
+            f"{pub['publisher_name']} {emoji} | "
+            f"{int(pub['dfls_curr']):,} | "
+            f"{format_pct(pub.get('dfl_pct'))} | "
+            f"{rpl_str} | "
+            f"{format_pct(pub.get('rpl_pct'))}"
+        )
+    return "\n".join(rows)
 
-*🚨 Double Flags — escalate same day*
-🔴 *{PUBLISHER}* | DFLs {DFL_PCT}% · RPL {RPL_PCT}% | {1-line advertiser callout}
-[Repeat per double-flagged publisher. Omit section if none.]
+def build_main_message(merged: list[dict], dates: dict, network_bullets: list[str]) -> str:
+    lines = [
+        f"*📊 Narvar OTP Daily Brief — {dates['today']}*",
+        f"*Rolling 7d: {dates['curr_start']}–{dates['curr_end']} vs {dates['prior_start']}–{dates['prior_end']}*",
+        "",
+    ]
 
-*🔴 DFL Flags — >10% WoW decline*
-▼ *{PUBLISHER}* | DFLs {DFL_PCT}% | {1-line note}
-[Repeat per DFL-only flagged publisher. Omit section if none.]
+    # Network TLDR
+    if network_bullets:
+        lines.append("*📌 Network TLDR*")
+        lines.extend(network_bullets)
+        lines.append("")
 
-*⚠️ RPL Flags — revenue per load declining >15%*
-↘ *{PUBLISHER}* | RPL {RPL_PCT}% · DFLs {DFL_PCT}% | {1-line note}
-[Repeat per RPL-only flagged publisher. Omit section if none.]
+    double_flagged = [p for p in merged if p["flag"] == "double"]
+    dfl_only       = [p for p in merged if p["flag"] == "dfl"]
+    rpl_only       = [p for p in merged if p["flag"] == "rpl"]
 
-*📈 All Publishers*
-Publisher | DFLs | DFL WoW | RPL | RPL WoW
-{PUBLISHER} {FLAG_EMOJI} | {DFL_CURR} | {DFL_PCT}% | ${RPL_CURR} | {RPL_PCT}%
-[One row per publisher, sorted: 🚨 first, then 🔴, then ⚠️, then ✅]
+    any_flags = double_flagged or dfl_only or rpl_only
 
-_<https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/EXT-Narvar-Reporting-031SR1hJTJuTVbRq5TSxa8/latest|📎 Full Narvar report> · Advertiser detail by publisher 👇_
-```
+    if not any_flags:
+        lines.append("✅ *All publishers healthy — no DFL or RPL flags today.*")
+        lines.append("")
+    else:
+        if double_flagged:
+            lines.append("*🚨 Double Flags — escalate same day*")
+            for p in double_flagged:
+                lines.append(
+                    f"🔴 *{p['publisher_name']}* | "
+                    f"DFLs {format_pct(p.get('dfl_pct'))} · RPL {format_pct(p.get('rpl_pct'))}"
+                )
+            lines.append("")
 
----
+        if dfl_only:
+            lines.append("*🔴 DFL Flags — >10% WoW decline*")
+            for p in dfl_only:
+                lines.append(
+                    f"▼ *{p['publisher_name']}* | DFLs {format_pct(p.get('dfl_pct'))}"
+                )
+            lines.append("")
 
-**Message 2 — Advertiser detail** (post as thread reply to Message 1):
+        if rpl_only:
+            lines.append("*⚠️ RPL Flags — revenue per load declining >15%*")
+            for p in rpl_only:
+                lines.append(
+                    f"↘ *{p['publisher_name']}* | "
+                    f"RPL {format_pct(p.get('rpl_pct'))} · DFLs {format_pct(p.get('dfl_pct'))}"
+                )
+            lines.append("")
 
-```
-*🔍 Advertiser mix detail — flagged publishers*
+    lines.append("*📈 All Publishers*")
+    lines.append(build_publisher_table(merged))
+    lines.append("")
+    lines.append(f"_<{HEX_LINK}|📎 Full Narvar report> · Advertiser detail by publisher 👇_")
 
-*{PUBLISHER}* (RPL {RPL_PCT}%)
-Prior: {ADV1} ${REV} · {ADV2} ${REV} · {ADV3} ${REV} · {ADV4} ${REV} · {ADV5} ${REV}
-Curr: {ADV1} ${REV} ↓ · {ADV2} ${REV} ↑ · {ADV3} ${REV} 🆕 · ...
+    return "\n".join(lines)
 
-[Repeat for each flagged publisher — both double-flagged and RPL-flagged]
-[↑ = revenue up WoW, ↓ = down WoW, 🆕 = new entry not in prior week top 5]
-```
+def build_advertiser_thread(adv_data: list[dict], flagged_pubs: list[str], rpl_map: dict) -> str:
+    lines = ["*🔍 Advertiser mix detail — flagged publishers*", ""]
 
----
+    # Organize: publisher → wk → [(brand, revenue)]
+    pub_wk: dict[str, dict] = defaultdict(lambda: {"prior": [], "curr": []})
+    for row in adv_data:
+        pub_wk[row["publisher_name"]][row["wk"]].append(
+            (row["brand_name"], float(row["revenue"] or 0))
+        )
 
-**If there are NO flags**, skip Message 2 and post only:
+    for pub in flagged_pubs:
+        rpl_pct = rpl_map.get(pub)
+        rpl_str = format_pct(rpl_pct) if rpl_pct is not None else "N/A"
+        lines.append(f"*{pub}* (RPL {rpl_str})")
 
-```
-*📊 Narvar OTP Daily Brief — {TODAY'S DATE}*
-*Rolling 7d: {CURR_START}–{CURR_END} vs {PRIOR_START}–{PRIOR_END}*
+        prior_list = sorted(pub_wk[pub]["prior"], key=lambda x: -x[1])
+        curr_list  = sorted(pub_wk[pub]["curr"],  key=lambda x: -x[1])
+        prior_names = {b for b, _ in prior_list}
 
-✅ *All publishers healthy — no DFL or RPL flags today.*
+        prior_str = " · ".join(f"{b} ${r:,.0f}" for b, r in prior_list) or "—"
+        curr_parts = []
+        for brand, rev in curr_list:
+            if brand not in prior_names:
+                curr_parts.append(f"{brand} ${rev:,.0f} 🆕")
+            else:
+                prior_rev = next((r for b, r in prior_list if b == brand), 0)
+                arrow = "↑" if rev >= prior_rev else "↓"
+                curr_parts.append(f"{brand} ${rev:,.0f} {arrow}")
+        curr_str = " · ".join(curr_parts) or "—"
 
-*📈 All Publishers*
-Publisher | DFLs | DFL WoW | RPL | RPL WoW
-{PUBLISHER} ✅ | {DFL_CURR} | {DFL_PCT}% | ${RPL_CURR} | {RPL_PCT}%
+        lines.append(f"Prior: {prior_str}")
+        lines.append(f"Curr:  {curr_str}")
+        lines.append("")
 
-_<https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/EXT-Narvar-Reporting-031SR1hJTJuTVbRq5TSxa8/latest|📎 Full Narvar report>_
-```
+    return "\n".join(lines)
 
----
+# ── Main ──────────────────────────────────────────────────────────────────────
+def main():
+    log.info("Starting Narvar OTP daily routine")
+    dates = get_date_ranges()
 
-## Flag Thresholds (edit to adjust)
+    # 1. Pull data from Snowflake
+    log.info("Connecting to Snowflake")
+    conn = get_snowflake_conn()
 
-| Metric | Threshold |
-|--------|-----------|
-| DFL WoW decline | > 10% |
-| RPL WoW decline | > 15% |
-| Double flag | Both DFL + RPL triggered |
-| Min publisher volume | ≥ 1,000 DFLs in prior week |
+    log.info("Pulling DFL data")
+    dfl_rows = run_query(conn, DFL_SQL)
 
----
+    log.info("Pulling RPL data")
+    rpl_rows = run_query(conn, RPL_SQL)
 
-## Notes
+    # 2. Merge DFL + RPL into a single publisher dict
+    dfl_map = {r["publisher_name"]: r for r in dfl_rows}
+    rpl_map = {r["publisher_name"]: r for r in rpl_rows}
+    all_pubs = sorted(set(dfl_map) | set(rpl_map))
 
-- **RPUT**: `NARVAR_DAILY_PERFORMANCE` needs to be backfilled before RPUT can
-  be included. Once backfilled, add a Step 2b pulling
-  `SUM(platform_revenue) / SUM(unique_tracks)` per publisher. Flag threshold:
-  >15% WoW decline. Add RPUT column to the All Publishers table.
+    merged = []
+    for pub in all_pubs:
+        dfl = dfl_map.get(pub, {})
+        rpl = rpl_map.get(pub, {})
+        dfl_pct = dfl.get("pct_change")
+        rpl_pct = rpl.get("rpl_pct_change")
+        flag    = classify(dfl_pct, rpl_pct)
+        merged.append({
+            "publisher_name": pub,
+            "dfls_curr":      dfl.get("dfls_curr", 0),
+            "dfl_pct":        dfl_pct,
+            "rpl_curr":       rpl.get("rpl_curr"),
+            "rpl_pct":        rpl_pct,
+            "flag":           flag,
+        })
 
-- **Portfolio escalation**: If two publishers with the same parent company
-  (e.g. Victoria's Secret + Savage X Fenty) are both flagged, note this
-  explicitly and recommend escalating together.
+    # Sort: double → dfl → rpl → ok
+    merged.sort(key=lambda x: sort_key(x["flag"]))
 
-- **Advertiser watch**: Low-CPM advertisers (e.g. Shipments Free) appearing
-  as new top-5 entries across 2+ publishers in the same week signal network-level
-  fill rate dilution — always call out in the Network TLDR and flag to demand team.
+    # 3. Identify flagged publishers and pull advertiser detail
+    flagged_pubs = [p["publisher_name"] for p in merged if p["flag"] != "ok"]
+    adv_data = []
+    if flagged_pubs:
+        log.info(f"Pulling advertiser detail for {len(flagged_pubs)} flagged publishers")
+        adv_data = run_query(conn, advertisers_sql(flagged_pubs))
+
+    conn.close()
+
+    # 4. Cross-publisher pattern detection
+    network_bullets = detect_cross_publisher_patterns(adv_data, set(flagged_pubs))
+
+    # 5. Build Slack messages
+    rpl_pct_map = {r["publisher_name"]: r.get("rpl_pct_change") for r in rpl_rows}
+    main_msg = build_main_message(merged, dates, network_bullets)
+
+    # 6. Post to Slack
+    slack = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
+
+    log.info(f"Posting main brief to {SLACK_CHANNEL}")
+    try:
+        resp = slack.chat_postMessage(channel=SLACK_CHANNEL, text=main_msg)
+        thread_ts = resp["ts"]
+    except SlackApiError as e:
+        log.error(f"Failed to post main message: {e.response['error']}")
+        sys.exit(1)
+
+    # Post advertiser thread only if there are flags
+    if flagged_pubs and adv_data:
+        thread_msg = build_advertiser_thread(adv_data, flagged_pubs, rpl_pct_map)
+        log.info("Posting advertiser detail as thread reply")
+        try:
+            slack.chat_postMessage(
+                channel=SLACK_CHANNEL,
+                text=thread_msg,
+                thread_ts=thread_ts,
+            )
+        except SlackApiError as e:
+            log.error(f"Failed to post thread: {e.response['error']}")
+
+    log.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()
