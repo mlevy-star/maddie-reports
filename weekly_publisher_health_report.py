@@ -1,108 +1,252 @@
-#!/usr/bin/env python3
-"""
-Weekly Publisher Health Report Runner
-Sends to: Slack #supply-health-weekly (C0AV8GH3EQ5) + email mlevy@disconetwork.com
-Schedule: Every Monday morning (see cron.txt)
-"""
+# Weekly Publisher Health Report — Claude Code Routine
 
-import datetime
+**Routine name:** Weekly Publisher Health Report
+**Schedule:** Daily (Mon–Sun) at 9:00 AM (your local timezone)
+**Connectors required:** Hex, Slack, Gmail
+**Slack channel:** #supply-health-weekly (ID: C0AV8GH3EQ5)
+**Email recipient:** mlevy@disconetwork.com
 
-# Report configuration
-REPORT_CONFIG = {
-    "slack_channel_id": "C0AV8GH3EW5",  # #supply-health-weekly
-    "email_to": "mlevy@disconetwork.com",
-    "email_subject_template": "📊 Weekly Publisher Health Report — {date}",
+---
 
-    # Hex projects
-    "hex_publisher_alerts_project": "019d9be4-3547-7008-9849-742c0d956afb",
-    "hex_supply_performance_project": "019ce306-f016-700c-aed9-a9ba95d827c2",
+## Setup Instructions
 
-    # Health flag thresholds
-    "thresholds": {
-        "critical": -0.20,    # RPM/RPL drop > 20%
-        "at_risk": -0.10,     # RPM/RPL drop 10–20%
-        "increase": 0.10,     # RPM/RPL gain > 10%
-        # else: HEALTHY (±10%)
-    },
+1. Go to **[claude.ai/code](https://claude.ai/code)** → click **Routines** → **New Routine**
+2. Set schedule: **Daily → Mon–Sun → 9:00 AM**
+3. Enable connectors: **Hex** + **Slack** + **Gmail**
+4. Paste everything inside the code block below into the Routine prompt field and save
 
-    # Page type mappings (raw DB value -> display label)
-    "page_types": {
-        "THANK_YOU": "TYP",
-        "ORDER_STATUS": "OSP",
-        "ORDER_TRACKING": "OTP",
-        "SUPPORT_CENTER": "Support",
-        # MODAL excluded
-    },
-}
+---
 
-# Publisher segments
-SEGMENTS = {
-    "all_pubs": {
-        "description": "All publishers excluding Mindbody, Gopuff, BevMo",
-        "exclude": ["Mindbody", "Gopuff", "BevMo"],
-        "source": "FCT_SESSIONS + FCT_BRAND_SESSIONS",
-    },
-    "gopuff_bevmo": {
-        "description": "Gopuff and BevMo segment",
-        "include": ["Gopuff", "BevMo"],
-        "source": "FCT_SESSIONS + FCT_BRAND_SESSIONS",
-        "note": "Only TYP and OSP pages observed; no OTP or Support traffic",
-    },
-    "mindbody": {
-        "description": "Mindbody — custom pipeline",
-        "include": ["Mindbody"],
-        "source": "reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue",
-        "pipeline": {
-            "deduplication": "lag() over order_id ordered by event_created_at — first event per order only",
-            "moroccanoil_cpm": "impressions × $0.10 from widget_viewable_threshold_brand_display events",
-            "action_groups": {
-                "BOOKING GROUP": ["booking"],
-                "PURCHASE GROUP": ["purchase", "purchase_and_booking", "booking_and_purchase"],
-            },
-            "transaction_type_field": "CUSTOM_METADATA:transactionType",
-            "session_events": "widget_load (deduplicated by order_id)",
-            "spend_events": [
-                "widget_brand_click",
-                "widget_viewable_threshold_brand_display",
-                "widget_brand_display",
-            ],
-        },
-    },
-}
+## Routine Prompt
 
-# RPM formula (Publisher Alerts)
-RPM_FORMULA = "sum(billable_amount) * 1000 / nullif(sum(brand_displays), 0)"
-RPM_MIN_DISPLAYS = 100  # Minimum brand displays per week to include publisher
+Every Monday morning, run the Weekly Publisher Health Report.
+Pull from three data sources, then deliver the report to BOTH Slack and email.
 
-# RPL formula (Supply Performance)
-RPL_FORMULA = "sum(billable_amount) / sum(sessions_with_widget_display)"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — RPM + Advertiser Attribution
+Source: Publisher Alerts dashboard
+URL: https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Publisher-Alerts-0331EBOLFT7qulVc6c8qmh/latest
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Advertiser attribution
-ATTRIBUTION = {
-    "source": "FCT_BRAND_SESSIONS (no join to FCT_SESSIONS needed)",
-    "group_by": ["publisher_name", "page_type", "brand_name", "is_nea", "brand_display_context"],
-    "order_by": "abs(spend_delta) DESC",
-    "limit_per_group": 5,
-    "cross_publisher_signal_threshold": 3,  # Flag if top driver across >= 3 publishers
-}
+For each publisher account, extract:
+- Last 7 days RPM vs the 7 days prior to that (rolling comparison, not calendar week)
+- Which advertisers are driving any RPM increases or decreases
+- Overall account health status
+
+Always show RPM as dollar values: prior RPM ($X.XX) → current RPM ($X.XX), dollar change (−$X.XX), and % change as secondary context only.
+
+Flag thresholds (based on % change, but always display dollar values):
+🔴 CRITICAL = RPM drop >20%
+🟡 AT RISK  = RPM drop 10–20%
+📈 INCREASE = RPM up >10%
+🟢 HEALTHY  = within ±10%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — RPL by Page Type, WoW (All Publishers)
+Source: Supply Performance dashboard
+URL: https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RPL = sum(billable_amount) / sum(sessions_with_widget_display), per page type.
+Always compare the last 7 days (today minus 7 days through yesterday) vs the 7 days
+prior to that (today minus 14 days through today minus 8 days) — regardless of what
+day of the week the report runs.
+Run THREE separate pipelines:
+
+--- SECTION A: All Publishers (excl. Mindbody, Gopuff, Bevmo) ---
+Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS
+Page types to report (exclude MODAL):
+  - TYP     (raw value: THANK_YOU)
+  - OSP     (raw value: ORDER_STATUS)
+  - OTP     (raw value: ORDER_TRACKING)
+  - Support (raw value: SUPPORT_CENTER)
+
+Compute WoW RPL delta per page type:
+  (current_week_rpl - prior_week_rpl) / nullif(prior_week_rpl, 0)
+
+Show network aggregate summary first, then individual publishers where
+any page type moved >10% WoW.
+
+--- SECTION B: Gopuff / Bevmo ---
+Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS, filtered to Gopuff/Bevmo publishers
+Same page type breakdown and WoW delta logic as Section A.
+
+--- SECTION C: Mindbody ---
+Source tables: reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue
+Use Mindbody's custom pipeline logic:
+  - Ad-ops deduplication: use lag() windowing to count only first-event sessions per order
+  - CPM spend for Moroccanoil: add impressions * $0.10 on top of standard billable_amount
+  - Group action types into TWO buckets:
+
+  BOOKING GROUP (combine Booking + Upcoming Booking):
+    These share the same intent — pre-purchase confirmation pages.
+
+  PURCHASE GROUP (combine Purchase + Booking & Purchase):
+    These represent completed transactions.
+
+Compute WoW RPL delta for each of the two Mindbody groups.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — Advertiser Attribution for RPL Changes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For any publisher + page type where RPL moved >10% WoW, identify which
+advertisers drove the spend change.
+
+Join FCT_BRAND_SESSIONS to FCT_SESSIONS on session_id.
+IMPORTANT: always include brand_display_context in GROUP BY to avoid
+double-counting spend (Hero vs. Multiple placement is part of the grain).
+
+Attribution query pattern:
+  SELECT
+    s.publisher_name,
+    s.page_type,
+    bs.brand_name,
+    bs.is_nea,
+    sum(CASE WHEN week = 'prior'   THEN bs.billable_amount END) as prior_spend,
+    sum(CASE WHEN week = 'current' THEN bs.billable_amount END) as current_spend,
+    (current_spend - prior_spend) as spend_delta,
+    (spend_delta / total_page_rpl_delta) as pct_of_rpl_change
+  FROM FCT_SESSIONS s
+  JOIN FCT_BRAND_SESSIONS bs ON s.session_id = bs.session_id
+  GROUP BY s.publisher_name, s.page_type, bs.brand_name, bs.is_nea, bs.brand_display_context
+  ORDER BY abs(spend_delta) DESC
+
+Surface top 5 advertisers by absolute spend delta per flagged publisher + page type.
+Note whether each is NEA (is_nea = true) or standard.
+Show each advertiser's % contribution to the total RPL change.
+
+Also check: if any single advertiser appears as a top spend driver across 3+ publishers
+in the same direction (increase or decrease), flag it as a network-wide signal.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — Deliver Report (Slack + Email)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Format the report as below, then deliver it in TWO ways:
+
+DELIVERY 1 — Slack
+  Send to channel: #supply-health-weekly (channel ID: C0AV8GH3EQ5)
+  Use Slack markdown formatting (*bold*, newlines between sections)
+
+DELIVERY 2 — Email via Gmail
+  To: mlevy@disconetwork.com
+  Subject: 📊 Weekly Publisher Health Report — [Date]
+  Body: same content as Slack but formatted as clean HTML.
+  - Section headers as <h2> tags
+  - RPL and account breakdown tables as HTML <table> elements with borders
+  - Inline color styling for flag rows:
+      🔴 critical rows: background-color #fff0f0
+      🟡 at-risk rows:  background-color #fffbe6
+      📈 increase rows: background-color #f0fff4
+  - Keep emoji flags for easy visual scanning
+
+---
+
+REPORT CONTENT FORMAT:
+
+Always include a blank line between every section header and its content, and a blank line after each section before the next divider.
+
+📊 WEEKLY PUBLISHER HEALTH REPORT — [Date]
 
 
-def get_report_window(as_of: datetime.date = None):
-    """Return (current_start, current_end, prior_start, prior_end) for Mon–Sun weeks."""
-    if as_of is None:
-        as_of = datetime.date.today()
-    # Find most recent Sunday (end of current week)
-    days_since_sunday = (as_of.weekday() + 1) % 7
-    current_end = as_of - datetime.timedelta(days=days_since_sunday)
-    current_start = current_end - datetime.timedelta(days=6)
-    prior_end = current_start - datetime.timedelta(days=1)
-    prior_start = prior_end - datetime.timedelta(days=6)
-    return current_start, current_end, prior_start, prior_end
+━━ RPM SUMMARY ━━
+
+RPM is a dollar value — always display as: Prior RPM → Current RPM (−$X.XX, −X%)
+
+🔴 CRITICAL (RPM drop >20%):
+  • [Publisher] | $X.XX → $X.XX (−$X.XX, −X%) | Top driver: [Advertiser] (−$X spend)
+
+🟡 AT RISK (RPM drop 10–20%):
+  • [Publisher] | $X.XX → $X.XX (−$X.XX, −X%) | Top driver: [Advertiser] (−$X spend)
+
+📈 INCREASES:
+  • [Publisher] | $X.XX → $X.XX (+$X.XX, +X%) | Top driver: [Advertiser] (+$X spend)
+
+🟢 HEALTHY: [N] publishers stable (±10%)
 
 
-if __name__ == "__main__":
-    current_start, current_end, prior_start, prior_end = get_report_window()
-    print(f"Report window: {current_start} – {current_end} vs. {prior_start} – {prior_end}")
-    print("To run: invoke via Claude Code with Hex MCP + Slack MCP + Gmail MCP")
-    print(f"Slack channel: {REPORT_CONFIG['slack_channel_id']}")
-    print(f"Email: {REPORT_CONFIG['email_to']}")
+---
+
+
+━━ ⚠️ NETWORK-WIDE SIGNALS ━━
+
+[Only include if any advertiser is a top driver across 3+ publishers in the same direction]
+Example: "Rakuten: −$X spend across [N] publishers — driving RPL declines at
+[Publisher A] (−X%), [Publisher B] (−X%), [Publisher C] (−X%)"
+
+Omit this section entirely if there are no cross-publisher signals this week.
+
+
+---
+
+
+━━ RPL BY PAGE TYPE — ALL PUBS (excl. MB/GP) ━━
+
+Network aggregate:
+
+| Page Type | Prior RPL | Current RPL | WoW Δ  |
+|-----------|-----------|-------------|--------|
+| TYP       | $X.XX     | $X.XX       | +/−X%  |
+| OSP       | $X.XX     | $X.XX       | +/−X%  |
+| OTP       | $X.XX     | $X.XX       | +/−X%  |
+| Support   | $X.XX     | $X.XX       | +/−X%  |
+
+Publishers with any page type moving >10% WoW:
+
+[Publisher Name] [🔴/🟡/📈]
+| Page Type | Prior RPL | Current RPL | WoW Δ | Top Advertiser Driver          |
+|-----------|-----------|-------------|-------|--------------------------------|
+| TYP       | $X.XX     | $X.XX       | −X%   | [Advertiser]: −$X (X% of Δ)   |
+| OSP       | $X.XX     | $X.XX       | −X%   | [Advertiser]: −$X (X% of Δ)   |
+
+
+---
+
+
+━━ RPL BY PAGE TYPE — GOPUFF / BEVMO ━━
+
+[Same table format as All Pubs section above]
+
+
+---
+
+
+━━ RPL BY ACTION TYPE — MINDBODY ━━
+
+Note: Moroccanoil CPM spend included (impressions × $0.10).
+
+| Action Group | Prior RPL | Current RPL | WoW Δ  |
+|--------------|-----------|-------------|--------|
+| Booking      | $X.XX     | $X.XX       | +/−X%  |
+| Purchase     | $X.XX     | $X.XX       | +/−X%  |
+
+
+---
+
+
+━━ FULL ACCOUNT BREAKDOWN ━━
+
+| Publisher | Prior RPM | Current RPM | RPM Δ$ | RPM Δ% | TYP RPL Δ | OSP RPL Δ | OTP RPL Δ | Support RPL Δ | Key Advertiser |
+
+[All publishers sorted by largest negative RPM dollar change first]
+
+---
+
+## Data Notes
+
+| Publisher Group        | Source Tables                                               | Notes                          |
+|------------------------|-------------------------------------------------------------|--------------------------------|
+| All Pubs (excl. MB/GP) | FCT_SESSIONS + FCT_BRAND_SESSIONS                           | Standard pipeline              |
+| Gopuff / Bevmo         | FCT_SESSIONS + FCT_BRAND_SESSIONS (filtered)                | Same tables, publisher filter  |
+| Mindbody               | reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue | Custom dedup + CPM logic     |
+
+**Mindbody action type groupings:**
+- Booking group  = Booking + Upcoming Booking
+- Purchase group = Purchase + Booking & Purchase
+
+**Advertiser attribution gotchas:**
+- Always GROUP BY brand_display_context (Hero vs. Multiple) — omitting it double-counts spend
+- Compute DFLs from FCT_SESSIONS alone — joining to FCT_BRAND_SESSIONS fans out session counts
+- CPA conversion counts unreliable since Dec 2025 — use billable_amount for all attribution
+- is_nea = true flags NEA advertisers — surface as context in the report
