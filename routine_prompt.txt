@@ -66,8 +66,10 @@ For each brand_name, compute:
   - publisher_count     = count of distinct publishers where |brand spend delta| > $200
   - is_nea
 
-Include all brands where abs(spend_delta) > $100.
+Include all brands where abs(spend_delta) > $100 (used for totals).
 Sort by spend_delta ascending (most negative first).
+Display threshold: list in the Spend DOWN section only brands with spend_delta ≤ −$500.
+List in the Spend UP section all brands with spend_delta > +$100.
 
 For brands where abs(spend_delta) > $500, also get the top publisher-level breakdown
 to identify which publishers drove the most spend change for that brand.
@@ -147,7 +149,7 @@ _Moroccanoil CPM included. [One line: booking/purchase volume note — e.g.
 _Spend DOWN:_
 • [Brand] [NEA] — _−$X,XXX_ across N publishers · [page type / publisher concentration if notable]
 • [Brand] [NEA] — _−$X,XXX_ across N publishers · went to zero
-[list all brands with spend_delta < −$100, sorted by largest negative first]
+[list all brands with spend_delta ≤ −$500, sorted by largest negative first]
 
 _Spend UP:_
 • [Brand] [NEA] — _+$X,XXX_ across N publishers · [context]
