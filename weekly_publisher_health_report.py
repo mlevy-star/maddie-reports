@@ -103,6 +103,53 @@ def get_report_window(as_of: datetime.date = None):
     return current_start, current_end, prior_start, prior_end
 
 
+# Slack report format — match this structure exactly
+# Reference: https://discotechnology.slack.com/archives/C0AV8GH3EQ5/p1778013284308369
+SLACK_FORMAT = """
+:bar_chart: _WEEKLY PUBLISHER HEALTH REPORT — {date}_
+_Rolling window: {current_start}–{current_end} vs {prior_start}–{prior_end}_
+
+_TL;DR:_ {narrative summary — RPL direction per page type, whether demand-side or supply-side,
+top 2-3 advertiser spend drivers by dollar impact with publisher count, any bright spots}
+
+━━ RPL BY PAGE TYPE — ALL PUBS (excl. MB/GP) ━━
+
+{markdown table: Page Type | Prior RPL | Current RPL | WoW Δ}
+
+_{one-line note on DFL direction and demand-side vs supply-side conclusion}_
+
+━━ RPL BY PAGE TYPE — GOPUFF / BEVMO ━━
+
+{markdown table: Segment | Page Type | Prior RPL | Current RPL | WoW Δ}
+
+━━ RPL BY ACTION TYPE — MINDBODY ━━
+
+{markdown table: Action Group | Prior RPL | Current RPL | WoW Δ}
+
+_{one-line note: Moroccanoil CPM included. Booking volume + whether decline is spend-side or volume-side}_
+
+━━ :warning: NETWORK-WIDE ADVERTISER SIGNALS ━━
+
+_Spend DOWN:_
+• Brand [NEA if applicable] — _−$X,XXX_ across N publishers · page-type concentration if notable
+
+_Spend UP:_
+• Brand [NEA if applicable] — _+$X,XXX_ across N publishers · page-type concentration if notable
+
+_Total identified spend down: ~−$X · Total identified spend up: ~+$X · Net: ~−$X_
+*Sent using* <@U0AGG5F5HEY>
+"""
+
+# Network signal rules:
+# - Include ALL brands with abs(spend_delta) > $100 aggregated across publishers
+# - publisher count = distinct publishers where brand had >$200 spend delta in that direction
+# - Mark [NEA] if is_nea = true
+# - Note page-type concentration if >50% of brand's delta is on one page type
+# - If no brands have positive spend_delta > $100, write: "No brands with net spend increase above $100 threshold this week."
+# - Spend DOWN section before Spend UP section
+# - Always include total line at bottom
+
+
 if __name__ == "__main__":
     current_start, current_end, prior_start, prior_end = get_report_window()
     print(f"Report window: {current_start} – {current_end} vs. {prior_start} – {prior_end}")
