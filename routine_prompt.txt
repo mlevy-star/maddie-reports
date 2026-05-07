@@ -13,7 +13,7 @@ prior to that (today minus 14 days through today minus 8 days) — regardless of
 day of the week the report runs.
 Run THREE separate pipelines:
 
---- SECTION A: All Publishers (excl. Mindbody, Gopuff, Bevmo) ---
+--- SECTION A: All Publishers (excl. Mindbody, Gopuff, BevMo) ---
 Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS
 Page types to report (exclude MODAL):
   - TYP     (raw value: THANK_YOU)
@@ -28,8 +28,8 @@ Also compute DFL WoW direction (are sessions_with_widget_display up or down?).
 This determines whether RPL moves are demand-side (spend fell, DFLs flat/up)
 or supply-side (DFLs fell).
 
---- SECTION B: Gopuff / Bevmo ---
-Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS, filtered to Gopuff/Bevmo publishers
+--- SECTION B: Gopuff / BevMo ---
+Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS, filtered to Gopuff/BevMo publishers
 Same page type breakdown and WoW delta logic as Section A.
 
 --- SECTION C: Mindbody ---
