@@ -1,7 +1,7 @@
-# Weekly Publisher Health Report — Daily 9:00 AM (Mon–Sun)
+# Weekly Publisher Health Report — Daily 10:00 AM (Mon–Sun)
 # Run via Claude Code CLI (requires Hex, Slack, Gmail MCPs configured)
 #
 # To install: crontab -e, then paste the line below
 # (adjust path to match your Claude Code installation)
 
-0 9 * * * cd /home/user/maddie-reports && claude -p "$(cat routine_prompt.txt)" --allowedTools "mcp__Hex__*,mcp__Slack__*,mcp__Gmail__*,Bash"
+0 10 * * * cd /home/user/maddie-reports && claude -p "$(cat routine_prompt.txt)" --allowedTools "mcp__Hex__*,mcp__Slack__*,mcp__Gmail__*,Bash"
