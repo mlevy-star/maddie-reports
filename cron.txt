@@ -6,4 +6,4 @@
 #   Paste the TZ line and the cron entry below, then save.
 
 TZ=America/New_York
-0 9 * * * /home/user/maddie-reports/run_report.sh >> /home/user/maddie-reports/report.log 2>&1
+0 10 * * * /home/user/maddie-reports/run_report.sh >> /home/user/maddie-reports/report.log 2>&1
