@@ -85,8 +85,10 @@ SEGMENTS = {
         "pipeline": {
             # Keep only the first event per order_id (ad-ops dedup)
             "deduplication": (
-                "lag() over (partition by order_id order by event_created_at) — "
-                "keep only rows where lag is NULL (first event per order)"
+                "lag() over (partition by coalesce(order_id, session_id) order by event_created_at) — "
+                "keep only rows where lag is NULL (first event per coalesce key). "
+                "NOTE: Mindbody widget events (clicks, viewables) have order_id = NULL; "
+                "must use coalesce(order_id, session_id) — partition by order_id alone zeroes all spend."
             ),
             # Moroccanoil CPM surcharge on top of standard billable_amount
             "moroccanoil_cpm": (
