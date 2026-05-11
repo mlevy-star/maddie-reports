@@ -1,138 +1,79 @@
-# Weekly Publisher Health Report — Claude Code Routine
-
-**Routine name:** Weekly Publisher Health Report
-**Schedule:** Daily (Mon–Sun) at 10:00 AM (your local timezone)
-**Connectors required:** Hex, Slack, Gmail
-**Slack channel:** #supply-health-weekly (ID: C0AV8GH3EQ5)
-**Email recipient:** mlevy@disconetwork.com
-
----
-
-## Setup Instructions
-
-1. Go to **[claude.ai/code](https://claude.ai/code)** → click **Routines** → **New Routine**
-2. Set schedule: **Daily → Mon–Sun → 10:00 AM**
-3. Enable connectors: **Hex** + **Slack** + **Gmail**
-4. Paste everything inside the code block below into the Routine prompt field and save
-
----
-
-## Routine Prompt
-
-Every day at 10 AM, run the Weekly Publisher Health Report.
-Pull from two data sources, then deliver the report to BOTH Slack and email.
+Run the Weekly Publisher Health Report and deliver it to Slack channel C0AV8GH3EQ5.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1 — RPL by Page Type, WoW (All Publishers)
-Source: Supply Performance dashboard
-URL: https://app.hex.tech/01975719-79d0-711b-a61c-0d574da7873a/app/Supply-Performance-032glc8YVtMzC5RWVsOqqQ/latest
+STEP 1 — Pull data from Hex
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-RPL = sum(billable_amount) / sum(sessions_with_widget_display), per page type.
-Always compare the last 7 days (today minus 7 days through yesterday) vs the 7 days
-prior to that (today minus 14 days through today minus 8 days) — regardless of what
-day of the week the report runs.
-Run THREE separate pipelines:
+Use the Hex Threads agent to run the following queries against the Supply Performance project.
+
+DATE WINDOWS (always rolling, never calendar week):
+  current window = today minus 7 days through yesterday
+  prior window   = today minus 14 days through today minus 8 days
+
+RPL = sum(billable_amount) / sum(sessions_with_widget_display)
 
 --- SECTION A: All Publishers (excl. Mindbody, Gopuff, BevMo) ---
-Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS
-Page types to report (exclude MODAL):
-  - TYP     (raw value: THANK_YOU)
-  - OSP     (raw value: ORDER_STATUS)
-  - OTP     (raw value: ORDER_TRACKING)
-  - Support (raw value: SUPPORT_CENTER)
+Tables: FCT_SESSIONS + FCT_BRAND_SESSIONS
+Page types (exclude MODAL):
+  TYP = THANK_YOU, OSP = ORDER_STATUS, OTP = ORDER_TRACKING, Support = SUPPORT_CENTER
 
-Compute WoW RPL delta per page type:
-  (current_week_rpl - prior_week_rpl) / nullif(prior_week_rpl, 0)
-
-Also compute DFL WoW direction (are sessions_with_widget_display up or down?).
-This determines whether RPL moves are demand-side (spend fell, DFLs flat/up)
-or supply-side (DFLs fell).
+For each page type compute:
+  - prior_rpl, current_rpl
+  - wow_delta = (current_rpl - prior_rpl) / nullif(prior_rpl, 0)
+  - DFL direction = is sessions_with_widget_display up or down WoW?
+    (compute from FCT_SESSIONS alone — do NOT join FCT_BRAND_SESSIONS for DFL counts)
 
 --- SECTION B: Gopuff / BevMo ---
-Source tables: FCT_SESSIONS + FCT_BRAND_SESSIONS, filtered to Gopuff/BevMo publishers
-Same page type breakdown and WoW delta logic as Section A.
+Same tables and logic as Section A, filtered to Gopuff and BevMo publishers only.
 
 --- SECTION C: Mindbody ---
-Source tables: reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue
-Use Mindbody's custom pipeline logic:
-  - Ad-ops deduplication: use lag() windowing to count only first-event sessions per order
-  - CPM spend for Moroccanoil: add impressions * $0.10 on top of standard billable_amount
-  - Group action types into TWO buckets:
-
-  BOOKING GROUP (combine Booking + Upcoming Booking):
-    These share the same intent — pre-purchase confirmation pages.
-
-  PURCHASE GROUP (combine Purchase + Booking & Purchase):
-    These represent completed transactions.
-
-Compute WoW RPL delta for each of the two Mindbody groups.
-Note whether the Mindbody change is spend-side or volume-side (compare ad_ops count WoW).
+Tables: reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue
+Special rules:
+  - Ad-ops dedup: use lag() windowing to count only first-event sessions per order
+  - Moroccanoil CPM: billable_amount += impressions * $0.10
+  - Group into TWO buckets:
+      Booking  = Booking + Upcoming Booking
+      Purchase = Purchase + Booking & Purchase
+Compute prior_rpl, current_rpl, wow_delta for each bucket.
+Note whether the change is spend-side or volume-side (compare ad_ops session count WoW).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 2 — Network-Wide Advertiser Signals
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For all publishers (excluding Mindbody), compute per-brand spend delta across the
-same two rolling windows.
+Use Hex Threads to query FCT_BRAND_SESSIONS joined to FCT_SESSIONS on session_id.
+Exclude Mindbody. Always include brand_display_context in GROUP BY (prevents double-counting Hero vs. Multiple placements).
 
-Join FCT_BRAND_SESSIONS to FCT_SESSIONS on session_id.
-IMPORTANT: always include brand_display_context in GROUP BY to avoid double-counting
-spend (Hero vs. Multiple placement is part of the grain).
+For each brand_name compute:
+  - total_prior_spend, total_current_spend across all publishers and page types
+  - spend_delta = total_current_spend - total_prior_spend
+  - publisher_count = distinct publishers where |that brand's spend delta| > $200
+  - is_nea flag
 
-For each brand_name, compute:
-  - total_prior_spend   = sum(billable_amount) in prior window, all publishers + page types
-  - total_current_spend = sum(billable_amount) in current window
-  - spend_delta         = total_current_spend - total_prior_spend
-  - publisher_count     = count of distinct publishers where |brand spend delta| > $200
-  - is_nea
+Totals: include all brands where abs(spend_delta) > $100.
+Display:
+  Spend DOWN = brands with spend_delta ≤ −$500, sorted most negative first
+  Spend UP   = brands with spend_delta > +$100, sorted largest first
 
-Include all brands where abs(spend_delta) > $100 (used for totals).
-Sort by spend_delta ascending (most negative first).
-Display threshold: list in the Spend DOWN section only brands with spend_delta ≤ −$500.
-List in the Spend UP section all brands with spend_delta > +$100.
-
-For brands where abs(spend_delta) > $500, also get the top publisher-level breakdown
-to identify which publishers drove the most spend change for that brand.
-Note any page-type concentration (e.g., if >50% of a brand's delta is on OTP, call it out).
+For brands where abs(spend_delta) > $500, note which publishers drove the change
+and flag if >50% of the delta is concentrated on a single page type.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 3 — Deliver Report (Slack + Email)
+STEP 3 — Send to Slack
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-DELIVERY 1 — Slack
-  Send to channel: #supply-health-weekly (channel ID: C0AV8GH3EQ5)
-  Use the exact format below.
-
-DELIVERY 2 — Email via Gmail
-  To: mlevy@disconetwork.com
-  Subject: 📊 Weekly Publisher Health Report — [Date]
-  Body: same content as Slack but formatted as clean HTML.
-  - Section headers as <h2> tags
-  - RPL tables as HTML <table> elements with borders
-  - Inline color styling for flag rows:
-      decline rows:  background-color #fff0f0
-      increase rows: background-color #f0fff4
-  - Keep emoji flags for easy visual scanning
-
----
-
-SLACK FORMAT — follow this structure exactly:
+Send one message to Slack channel C0AV8GH3EQ5 using this exact format:
 
 :bar_chart: _WEEKLY PUBLISHER HEALTH REPORT — [Date]_
 _Rolling window: [current_start]–[current_end] vs [prior_start]–[prior_end]_
 
 
 
-_TL;DR:_ [2-4 sentence narrative. Cover: (1) which page types moved and by how much,
-(2) whether the move is demand-side (DFLs flat/up, spend fell) or supply-side (DFLs fell),
-(3) top 2-3 advertiser spend drivers by dollar impact with publisher count,
-(4) any bright spots — positive RPL movers or Mindbody. Be specific with dollar amounts.]
+_TL;DR:_ [2-4 sentences covering: which page types moved and by how much; whether demand-side (DFLs flat/up, spend fell) or supply-side (DFLs fell); top 2-3 advertiser spend drivers by dollar amount with publisher count; any bright spots. Be specific with dollar figures.]
 
 
 
 ━━ RPL BY PAGE TYPE — ALL PUBS (excl. MB/GP) ━━
-
 
 | Page Type | Prior RPL | Current RPL | WoW Δ |
 |-----------|-----------|-------------|-------|
@@ -141,12 +82,10 @@ _TL;DR:_ [2-4 sentence narrative. Cover: (1) which page types moved and by how m
 | OTP       | $X.XXXX   | $X.XXXX     | X%    |
 | Support   | $X.XXXX   | $X.XXXX     | X%    |
 
-_[One line: DFL direction summary — e.g. "DFLs up across all pages (+14.7% TYP) — confirmed demand-side"
-or "DFLs down (TYP −18%) — supply-side contraction"]_
+_[One line DFL summary — e.g. "DFLs up across all pages (+14.7% TYP) — confirmed demand-side" or "DFLs down (TYP −18%) — supply-side contraction"]_
 
 
 ━━ RPL BY PAGE TYPE — GOPUFF / BEVMO ━━
-
 
 | Segment | Page Type | Prior RPL | Current RPL | WoW Δ |
 |---------|-----------|-----------|-------------|-------|
@@ -161,54 +100,18 @@ or "DFLs down (TYP −18%) — supply-side contraction"]_
 | Booking  | $X.XXXX | $X.XXXX | X% |
 | Purchase | $X.XXXX | $X.XXXX | X% |
 
-_Moroccanoil CPM included. [One line: booking/purchase volume note — e.g.
-"Booking volume flat ~1.09M — decline is spend-side ($24.0k prior vs $22.6k current)."]_
+_Moroccanoil CPM included. [One line on booking/purchase volume — e.g. "Booking volume flat ~1.09M — decline is spend-side ($24.0k prior vs $22.6k current)."]_
 
 
 ━━ :warning: NETWORK-WIDE ADVERTISER SIGNALS ━━
 
 _Spend DOWN:_
-• [Brand] [NEA] — _−$X,XXX_ across N publishers · [page type / publisher concentration if notable]
-• [Brand] [NEA] — _−$X,XXX_ across N publishers · went to zero
-[list all brands with spend_delta ≤ −$500, sorted by largest negative first]
+• [Brand] [NEA] — _−$X,XXX_ across N publishers · [concentration note if applicable]
+[all brands with spend_delta ≤ −$500, most negative first; add "· went to zero" if current_spend = 0]
 
 _Spend UP:_
 • [Brand] [NEA] — _+$X,XXX_ across N publishers · [context]
-[list all brands with spend_delta > +$100, sorted by largest positive first]
-[if none: "No brands with net spend increase above $100 threshold this week."]
+[all brands with spend_delta > +$100, largest first; if none: "No brands above $100 threshold this week."]
 
 _Total identified spend down: ~−$X,XXX · Total identified spend up: ~+$X,XXX · Net: ~−$X,XXX_
 *Sent using* <@U0AGG5F5HEY>
-
----
-
-FORMATTING RULES:
-- [NEA] label only for is_nea = true brands
-- "went to zero" when current_spend = 0
-- publisher count = distinct publishers where that brand's spend delta exceeded $200 in the same direction
-- page type concentration note when >50% of a brand's total spend delta is on a single page type
-- do NOT include an RPM Summary section in Slack
-- do NOT include a full per-publisher account breakdown in Slack
-- those details belong in the HTML email only
-
----
-
-## Data Notes
-
-| Publisher Group        | Source Tables                                                 | Notes                          |
-|------------------------|---------------------------------------------------------------|--------------------------------|
-| All Pubs (excl. MB/GP) | FCT_SESSIONS + FCT_BRAND_SESSIONS                             | Standard pipeline              |
-| Gopuff / BevMo         | FCT_SESSIONS + FCT_BRAND_SESSIONS (filtered)                  | Same tables, publisher filter  |
-| Mindbody               | reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue | Custom dedup + CPM logic       |
-
-**Mindbody action type groupings:**
-- Booking group  = Booking + Upcoming Booking
-- Purchase group = Purchase + Booking & Purchase
-
-**Advertiser attribution gotchas:**
-- Always GROUP BY brand_display_context (Hero vs. Multiple) — omitting it double-counts spend
-- Compute DFLs from FCT_SESSIONS alone — joining to FCT_BRAND_SESSIONS fans out session counts
-- CPA conversion counts unreliable since Dec 2025 — use billable_amount for all attribution
-- is_nea = true flags NEA advertisers — surface as context in the report
-- publisher_count in signals = distinct publishers where |brand spend delta| > $200
-- Page-type concentration: note when >50% of a brand's total delta is on a single page type
