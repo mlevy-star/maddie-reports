@@ -87,7 +87,40 @@ Use Mindbody's custom pipeline logic:
 Compute WoW RPL delta for each of the two Mindbody groups.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 3 — Advertiser Attribution for RPL Changes
+STEP 3 — DFL / Ad Opportunity Shifts (All Publishers)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Source: FCT_SESSIONS only (do NOT join FCT_BRAND_SESSIONS — it fans out session counts).
+Include ALL publishers (Mindbody, Gopuff, BevMo, everyone). Exclude MODAL page type.
+Use the same rolling date windows as STEP 2.
+
+For each publisher + page_type combination, compute:
+  - prior_dfl_sessions   = count of sessions where sessions_with_widget_display in prior window
+  - current_dfl_sessions = count of sessions where sessions_with_widget_display in current window
+  - dfl_wow_pct          = (current - prior) / nullif(prior, 0)
+  - prior_total_sessions   = total widget-load sessions in prior window
+  - current_total_sessions = total widget-load sessions in current window
+  - prior_fill_rate   = prior_dfl_sessions / prior_total_sessions
+  - current_fill_rate = current_dfl_sessions / current_total_sessions
+  - fill_rate_delta_ppts = current_fill_rate - prior_fill_rate
+
+Filter noise: only include rows where prior_dfl_sessions > 500 OR current_dfl_sessions > 500.
+
+Flag rules:
+  - IS_MAJOR_DFL_SHIFT   = abs(dfl_wow_pct) > 0.20
+  - IS_FILL_RATE_SHIFT   = abs(fill_rate_delta_ppts) > 0.05
+
+For the report, separate flagged rows into:
+  - Ramps:  dfl_wow_pct > +20%, sorted largest first
+  - Drops:  dfl_wow_pct < −20%, sorted most negative first
+Only include IS_MAJOR_DFL_SHIFT rows in the report section.
+If no rows are flagged, write: "No major DFL shifts (>20%) this week."
+
+Also produce a publisher-level rollup (sum DFLs across page types) sorted by abs(dfl_wow_pct)
+for context, but only surface it in the report if a publisher's rollup itself crosses ±20%.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — Advertiser Attribution for RPL Changes
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 For any publisher + page type where RPL moved >10% WoW, identify which
@@ -120,7 +153,7 @@ Also check: if any single advertiser appears as a top spend driver across 3+ pub
 in the same direction (increase or decrease), flag it as a network-wide signal.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 4 — Deliver Report (Slack + Email)
+STEP 5 — Deliver Report (Slack + Email)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Format the report as below, then deliver it in TWO ways:
@@ -220,6 +253,30 @@ Note: Moroccanoil CPM spend included (impressions × $0.10).
 |--------------|-----------|-------------|--------|
 | Booking      | $X.XX     | $X.XX       | +/−X%  |
 | Purchase     | $X.XX     | $X.XX       | +/−X%  |
+
+
+---
+
+
+━━ 🔄 DFL / AD OPPORTUNITY SHIFTS — ALL PUBLISHERS ━━
+
+Only show rows where abs(dfl_wow_pct) > 20%. If none, write: "No major DFL shifts (>20%) this week."
+
+Ramps (DFL WoW > +20%), sorted largest first:
+| Publisher | Page Type | Prior DFLs | Current DFLs | WoW Δ | Fill Rate Δ |
+|-----------|-----------|-----------|-------------|-------|-------------|
+| ...       | ...       | ...       | ...         | ...   | ...         |
+
+Drops (DFL WoW < −20%), sorted most negative first:
+| Publisher | Page Type | Prior DFLs | Current DFLs | WoW Δ | Fill Rate Δ |
+|-----------|-----------|-----------|-------------|-------|-------------|
+| ...       | ...       | ...       | ...         | ...   | ...         |
+
+_[One line: call out any publisher that went to zero, any fill rate shift > 5 ppts, and whether
+ the Footlocker/large-ramp context is publisher-side volume or fill improvement.]_
+
+Note: fill rate here = DFL sessions / widget-load sessions within FCT_SESSIONS.
+No fill rate shifts flagged = no ±5 ppt movers found.
 
 
 ---
