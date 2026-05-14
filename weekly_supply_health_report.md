@@ -61,7 +61,11 @@ Also run a PUBLISHER-LEVEL DFL sub-query for Section A:
 --- SECTION B: Gopuff / BevMo ---
 Same tables and logic as Section A, filtered to Gopuff and BevMo publishers only.
 Compute 30d_rpl, prior_rpl, current_rpl, wow_delta, vs_30d for each publisher × page type.
-Also compute prior_dfl, current_dfl, dfl_wow per publisher × page type (from FCT_SESSIONS only).
+Also compute ad opportunity counts WoW per publisher × page type:
+  - prior_ad_opps   = sum(ad_opportunities) over the prior 7-day window
+  - current_ad_opps = sum(ad_opportunities) over the current 7-day window
+  - ad_opps_wow     = (current_ad_opps - prior_ad_opps) / nullif(prior_ad_opps, 0)
+  Query from FCT_SESSIONS only (do NOT join FCT_BRAND_SESSIONS for opportunity counts).
 
 --- SECTION C: Mindbody ---
 Tables: reporting.event + reporting.combined_cpc_cpa_ad_spend_revenue
@@ -72,8 +76,11 @@ Special rules:
       Booking  = Booking + Upcoming Booking
       Purchase = Purchase + Booking & Purchase
 Compute 30d_rpl, prior_rpl, current_rpl, wow_delta, vs_30d for each bucket.
-Also report ad_ops session count (prior vs current) per bucket — this is the Mindbody DFL equivalent.
-Compute dfl_wow = (current_sessions - prior_sessions) / nullif(prior_sessions, 0) per bucket.
+Also compute ad opportunity counts WoW per bucket:
+  - prior_ad_opps   = sum(ad_opportunities) over the prior 7-day window
+  - current_ad_opps = sum(ad_opportunities) over the current 7-day window
+  - ad_opps_wow     = (current_ad_opps - prior_ad_opps) / nullif(prior_ad_opps, 0)
+  Apply the same ad-ops dedup (lag() windowing) to opportunity counts as to RPL sessions.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 2 — Network-Wide Advertiser Signals
@@ -150,9 +157,9 @@ _Moroccanoil CPM included. [One line on booking/purchase volume WoW and vs 30d b
 e.g. "Booking volume +2% WoW but −5% vs 30d avg (~1.12M) — trend is softening spend-side."]_
 
 
-━━ DFL (SESSIONS WITH WIDGET DISPLAY) — WoW ━━
+━━ DFLs / AD OPPORTUNITIES — WoW ━━
 
-_All Pubs (excl. MB/GP):_
+_All Pubs (excl. MB/GP) — DFLs (sessions_with_widget_display):_
 
 | Page Type | Prior DFLs | Current DFLs | WoW Δ |
 |-----------|------------|--------------|-------|
@@ -161,18 +168,18 @@ _All Pubs (excl. MB/GP):_
 | OTP       | X,XXX,XXX  | X,XXX,XXX    | X%    |
 | Support   | X,XXX,XXX  | X,XXX,XXX    | X%    |
 
-_Gopuff / BevMo:_
+_Gopuff / BevMo — Ad Opportunities:_
 
-| Segment | Page Type | Prior DFLs | Current DFLs | WoW Δ |
-|---------|-----------|------------|--------------|-------|
-| Gopuff  | TYP       | X,XXX,XXX  | X,XXX,XXX    | X%    |
-| BevMo   | TYP       | X,XXX,XXX  | X,XXX,XXX    | X%    |
-| BevMo   | OSP       | X,XXX,XXX  | X,XXX,XXX    | X%    |
-| ...     | ...       | ...        | ...          | ...   |
+| Segment | Page Type | Prior Ad Opps | Current Ad Opps | WoW Δ |
+|---------|-----------|---------------|-----------------|-------|
+| Gopuff  | TYP       | X,XXX,XXX     | X,XXX,XXX       | X%    |
+| BevMo   | TYP       | X,XXX,XXX     | X,XXX,XXX       | X%    |
+| BevMo   | OSP       | X,XXX,XXX     | X,XXX,XXX       | X%    |
+| ...     | ...       | ...           | ...             | ...   |
 
-_Mindbody (ad-ops deduped sessions):_
+_Mindbody — Ad Opportunities (ad-ops deduped):_
 
-| Action Group | Prior Sessions | Current Sessions | WoW Δ |
+| Action Group | Prior Ad Opps | Current Ad Opps | WoW Δ |
 |---|---|---|---|
 | Booking  | X,XXX,XXX | X,XXX,XXX | X% |
 | Purchase | X,XXX,XXX | X,XXX,XXX | X% |
