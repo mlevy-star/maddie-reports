@@ -5,3 +5,14 @@
 # (adjust path to match your Claude Code installation)
 
 0 8 * * 1 cd /home/user/maddie-reports && claude -p "Run the weekly publisher health report for the week ending this past Sunday. Use the config in weekly_publisher_health_report.py. Pull data from Hex (Publisher Alerts + Supply Performance), apply health flags, send to Slack channel C0AV8GH3EQ5 and email mlevy@disconetwork.com." --allowedTools "mcp__Hex__*,mcp__Slack__*,mcp__Gmail__*,Bash"
+
+# Weekly Supply Health Report — Monday 10:00 AM ET
+# Sends RPL by page type (WoW + vs 30d trend) + network-wide advertiser signals to Slack
+# Requires: Hex + Slack MCPs configured, ANTHROPIC_API_KEY set in environment
+#
+# To install: crontab -e, then add the two lines below (TZ line first):
+# TZ=America/New_York
+# 0 10 * * 1 /home/user/maddie-reports/run_supply_health_report.sh >> /home/user/maddie-reports/supply_health.log 2>&1
+
+TZ=America/New_York
+0 10 * * 1 /home/user/maddie-reports/run_supply_health_report.sh >> /home/user/maddie-reports/supply_health.log 2>&1
