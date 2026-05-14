@@ -53,6 +53,11 @@ For each page type compute:
   - dfl_wow     = (current_dfl - prior_dfl) / nullif(prior_dfl, 0)
   DFL counts: compute from FCT_SESSIONS alone — do NOT join FCT_BRAND_SESSIONS (fan-out risk).
 
+Also run a PUBLISHER-LEVEL DFL sub-query for Section A:
+  Group FCT_SESSIONS by publisher_name (excl. Mindbody, Gopuff, BevMo; excl. MODAL).
+  Compute prior_dfl, current_dfl, dfl_wow per publisher (summed across all page types).
+  Return only publishers where dfl_wow ≤ −0.20 AND prior_dfl ≥ 1000, sorted most negative first.
+
 --- SECTION B: Gopuff / BevMo ---
 Same tables and logic as Section A, filtered to Gopuff and BevMo publishers only.
 Compute 30d_rpl, prior_rpl, current_rpl, wow_delta, vs_30d for each publisher × page type.
@@ -171,6 +176,10 @@ _Mindbody (ad-ops deduped sessions):_
 |---|---|---|---|
 | Booking  | X,XXX,XXX | X,XXX,XXX | X% |
 | Purchase | X,XXX,XXX | X,XXX,XXX | X% |
+
+_:rotating_light: Publishers with DFL decline >20% WoW (excl. MB/GP; min 1,000 prior DFLs):_
+• [Publisher] — Prior: X,XXX,XXX · Current: X,XXX,XXX · WoW: −XX%
+[sorted most negative first; if none: "No publishers above the 20% decline threshold this week."]
 
 
 ━━ :warning: NETWORK-WIDE ADVERTISER SIGNALS ━━
